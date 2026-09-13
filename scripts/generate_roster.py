@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from collections import defaultdict
-import argparse,json,sys,zipfile
+import argparse,base64,binascii,json,sys,tempfile,zipfile
 import xml.etree.ElementTree as ET
 from xlsxio import read_values,patch,XlsxError
 from scheduler import availability,assign,extras,DAYS,TC
 
 class RosterError(RuntimeError):pass
+
+def resolve_template(template):
+    template=Path(template)
+    if template.exists():return template,None
+    encoded=Path(str(template)+'.b64')
+    if not encoded.exists():raise RosterError(f'找不到排班模板: {template} 或 {encoded}')
+    holder=tempfile.TemporaryDirectory(prefix='duty-roster-template-')
+    decoded=Path(holder.name)/template.name
+    try:decoded.write_bytes(base64.b64decode(encoded.read_text(encoding='utf-8').strip(),validate=True))
+    except (binascii.Error,ValueError) as e:
+        holder.cleanup();raise RosterError(f'内置模板解码失败: {e}')
+    return decoded,holder
 
 def generate(week,free,template,config_path,output):
     c=json.loads(Path(config_path).read_text(encoding='utf-8')); ex=set(c.get('excluded',[])); st=c.get('settings',{})
@@ -50,8 +62,14 @@ def main():
     if a.week<=0:p.error('--week must be positive')
     o=a.output or Path.cwd()/f'第{a.week}周_值班表.xlsx'
     if o.resolve() in {a.template.resolve(),a.free_table.resolve()}:p.error('output must be a new file')
-    try:r=generate(a.week,a.free_table,a.template,a.config,o)
-    except (RosterError,XlsxError,zipfile.BadZipFile,ET.ParseError,KeyError,ValueError) as e:print(json.dumps({'ok':False,'error':str(e)},ensure_ascii=False,indent=2),file=sys.stderr);return 2
+    holder=None
+    try:
+        template,holder=resolve_template(a.template)
+        r=generate(a.week,a.free_table,template,a.config,o)
+    except (RosterError,XlsxError,zipfile.BadZipFile,ET.ParseError,KeyError,ValueError) as e:
+        print(json.dumps({'ok':False,'error':str(e)},ensure_ascii=False,indent=2),file=sys.stderr);return 2
+    finally:
+        if holder is not None:holder.cleanup()
     if a.report:a.report.write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps({'ok':True,**r},ensure_ascii=False,indent=2));return 0
 if __name__=='__main__':raise SystemExit(main())
