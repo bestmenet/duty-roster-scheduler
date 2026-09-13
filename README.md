@@ -6,17 +6,19 @@
 
 ## 即用即弃
 
-本 Skill 采用一次性使用模式：**每次完成排班、校验并把生成文件保存到 Skill 目录之外后，必须立即卸载本地 `duty-roster-scheduler` Skill 包。**
+本 Skill 采用一次性使用模式：**每次完成排班与校验后，标准生成脚本会自动删除本地 `duty-roster-scheduler` Skill 包，并验证是否已经删除。这个行为写在 Skill 自身和执行脚本中，不依赖安装 Prompt。**
 
-推荐全局安装，因此标准生命周期是：
+推荐全局安装：
 
 ```bash
 npx skills add bestmenet/duty-roster-scheduler -g -y
-# 使用 Skill 完成一次排班
-npx skills remove duty-roster-scheduler -g -y
 ```
 
-只删除本地安装副本，不删除 GitHub 仓库，也不删除生成的 Excel、无课表或校验报告。
+之后正常运行一次排班即可；`scripts/generate_roster.py` 成功完成后会调用 `scripts/cleanup_skill.py` 自动清理本地 Skill。
+
+生成的 Excel 和校验报告必须保存到 Skill 安装目录之外。自动清理只删除本地 Skill 安装副本，不删除 GitHub 仓库，也不删除生成的 Excel、用户无课表或校验报告。
+
+如果自动清理失败，生成脚本会返回非零状态并明确报告原因，不会把失败伪装成成功。
 
 ## 规则摘要
 
@@ -28,7 +30,7 @@ npx skills remove duty-roster-scheduler -g -y
 - 1-2 节（早上 8 点）禁止增员。
 - 无可用部长时写 `待补`，不制造课程冲突。
 - 保留原 Excel 模板全部排版，只写 `B3:F7`。
-- 每次使用完成后立即卸载本 Skill。
+- 每次成功使用后自动卸载本 Skill，并验证卸载结果。
 
 ## 安装
 
@@ -36,7 +38,7 @@ npx skills remove duty-roster-scheduler -g -y
 npx skills add bestmenet/duty-roster-scheduler -g -y
 ```
 
-安装后，当用户要求根据“第几周 + 无课表”排班时，读取 `SKILL.md` 并执行其中工作流；完成一次任务后按 `SKILL.md` 的清理阶段立即卸载。
+安装后，当用户要求根据“第几周 + 无课表”排班时，读取 `SKILL.md` 并执行其中工作流。无需额外 Prompt 才能触发即用即弃限制。
 
 ## 直接运行
 
@@ -44,11 +46,18 @@ npx skills add bestmenet/duty-roster-scheduler -g -y
 python scripts/generate_roster.py \
   --week 3 \
   --free-table "/path/to/2026-2027 学年无课表（单周）.xlsx" \
-  --output "第3周_值班表.xlsx" \
-  --report "第3周_值班表_校验.json"
+  --output "/safe/output/第3周_值班表.xlsx" \
+  --report "/safe/output/第3周_值班表_校验.json"
 ```
 
 脚本仅依赖 Python 标准库。为保证公开仓库能可靠保存模板，模板以 `assets/duty_roster_template.xlsx.b64` 形式随仓库分发，脚本运行时会自动无损还原为原始 `.xlsx`，用户无需手动处理。
+
+成功执行链路：
+
+```text
+读取无课表 → 生成排班 → 校验 → 保存 Excel/报告到 Skill 目录外
+→ cleanup_skill.py → Skills CLI 卸载 → 再次验证 → 结束
+```
 
 ## 目录
 
@@ -65,10 +74,11 @@ duty-roster-scheduler/
 │  └─ rules.md
 └─ scripts/
    ├─ generate_roster.py
+   ├─ cleanup_skill.py
    ├─ scheduler.py
    └─ xlsxio.py
 ```
 
 ## 一键安装 Prompt
 
-见 [`INSTALL_PROMPT.md`](INSTALL_PROMPT.md)。
+见 [`INSTALL_PROMPT.md`](INSTALL_PROMPT.md)。Prompt 只是方便安装和说明用途；**自动自清理规则本身不依赖 Prompt。**
