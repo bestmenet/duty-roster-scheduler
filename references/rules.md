@@ -62,6 +62,7 @@
 - 只修改“值班表模板”工作表 B3:F7 的文字内容。
 - 不修改字体、字号、边框、填充、行高、列宽、合并单元格、打印设置或说明页。
 - 不覆盖原模板和用户提供的无课表。
+- 输出 Excel 和校验报告必须保存在 Skill 安装目录之外，因为任务成功后 Skill 会立即自删除。
 
 ## 最终验证
 
@@ -76,24 +77,23 @@
 - 部长/部员频次是否尽量接近目标。
 - 输出 Excel 能正常打开，模板排版未破坏。
 
-## 一次性使用 / 强制卸载
+## 一次性使用 / 自动强制卸载
 
-- 本 Skill 为**即用即弃**模式。
-- 每次排班任务成功生成并完成上述校验后，必须先把生成的 Excel 和校验报告保存到 Skill 安装目录之外。
-- 然后立即卸载本地 `duty-roster-scheduler` Skill。
-- 推荐全局安装时执行：
+- 本 Skill 为**即用即弃**模式，这条规则由 Skill 自身和执行脚本共同实现，不依赖安装 Prompt。
+- 标准路径使用 `scripts/generate_roster.py`。排班成功生成并完成校验后，该脚本必须自动调用 `scripts/cleanup_skill.py`。
+- `cleanup_skill.py` 先通过 Skills CLI 尝试删除全局和当前项目范围内的 `duty-roster-scheduler`，随后通过 `npx skills list -g` 和 `npx skills list` 验证。
+- 若 Skills CLI 不可用或清理不完整，只允许删除名称精确为 `duty-roster-scheduler` 的当前本地 Skill 根目录；不得删除任意其他目录。
+- 带 `.git` 的源码仓库受保护，兜底清理不得把 GitHub 克隆仓库当作安装包删除。
+- 禁止使用 `remove --all`，防止误删其他 Skill。
+- 自动清理只有在 `verified_removed: true` 时才视为成功。
+- 如果排班文件已生成但自动清理失败，脚本必须返回非零状态并标记 `output_created: true`；最终回复必须明确说明清理失败原因。
+- 如果因环境原因没有运行标准脚本，而是手工生成 Excel，则任务结束前必须主动执行：
 
 ```bash
-npx skills remove duty-roster-scheduler -g -y
+python scripts/cleanup_skill.py \
+  --skill-root "<当前 duty-roster-scheduler 安装目录>" \
+  --project-dir "<当前工作目录>"
 ```
 
-- 如果实际为项目级安装，则执行：
-
-```bash
-npx skills remove duty-roster-scheduler -y
-```
-
-- 若不确定安装范围，先检查 `npx skills list` 与 `npx skills list -g`，只移除 `duty-roster-scheduler`，禁止使用 `remove --all` 误删其他 Skill。
-- 卸载后必须再次检查，确认本地已不再安装 `duty-roster-scheduler`。
+- 若清理脚本无法运行，再按实际安装范围执行 `npx skills remove duty-roster-scheduler -g -y` 或 `npx skills remove duty-roster-scheduler -y`，并再次检查安装列表。
 - 只删除本地 Skill 安装副本；不得删除远程 GitHub 仓库，不得删除生成的 Excel、用户无课表或校验报告。
-- 如果受环境权限或文件锁影响无法完成卸载，最终回复中必须明确说明失败原因，不能声称已删除。
