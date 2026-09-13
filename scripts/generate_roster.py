@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from collections import defaultdict
-import argparse,base64,binascii,json,sys,tempfile,zipfile
+import argparse,base64,binascii,json,subprocess,sys,tempfile,zipfile
 import xml.etree.ElementTree as ET
 from xlsxio import read_values,patch,XlsxError
 from scheduler import availability,assign,extras,DAYS,TC
@@ -57,11 +57,46 @@ def generate(week,free,template,config_path,output):
     lab=lambda i:f"{slots[i]['day']} {slots[i]['name']}节"
     return {'week':week,'week_type':'单周' if week%2 else '双周','free_table_sheet':sh,'free_table_title':title,'output':str(output),'extra_target':round(len(slots)*float(st.get('extra_slot_fraction',1/3))),'extra_actual':len(extra),'unfilled_minister':[lab(i) for i in mu],'unfilled_member':[lab(i) for i in bu],'minister_counts':dict(sorted(mc.items())),'member_counts':dict(sorted(bc.items())),'same_day_repeats':rep,'excluded_absent':True,'eight_am_extra_count':0,'cells_written':cells}
 
+
+def is_within(path, root):
+    try:
+        Path(path).expanduser().resolve().relative_to(Path(root).expanduser().resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def run_cleanup(skill_root, project_dir):
+    cleanup_script=Path(skill_root)/'scripts/cleanup_skill.py'
+    if not cleanup_script.exists():
+        return {'verified_removed':False,'error':'缺少自动清理脚本 cleanup_skill.py'}
+    cmd=[sys.executable,str(cleanup_script),'--skill-name','duty-roster-scheduler','--skill-root',str(skill_root)]
+    if project_dir and not is_within(project_dir,skill_root):
+        cmd += ['--project-dir',str(project_dir)]
+    try:
+        cp=subprocess.run(cmd,cwd=tempfile.gettempdir(),text=True,capture_output=True,timeout=180,check=False)
+    except (OSError,subprocess.SubprocessError) as exc:
+        return {'verified_removed':False,'error':str(exc)}
+    try:
+        payload=json.loads(cp.stdout) if cp.stdout.strip() else {}
+    except json.JSONDecodeError:
+        payload={'stdout':cp.stdout[-4000:]}
+    payload['returncode']=cp.returncode
+    if cp.stderr.strip():payload['stderr']=cp.stderr[-4000:]
+    payload['verified_removed']=bool(payload.get('verified_removed')) and cp.returncode==0
+    return payload
+
+
 def main():
-    here=Path(__file__).resolve().parent.parent;p=argparse.ArgumentParser();p.add_argument('--week',type=int,required=True);p.add_argument('--free-table',type=Path,required=True);p.add_argument('--template',type=Path,default=here/'assets/duty_roster_template.xlsx');p.add_argument('--config',type=Path,default=here/'config/roster.json');p.add_argument('--output',type=Path);p.add_argument('--report',type=Path);a=p.parse_args()
+    here=Path(__file__).absolute().parent.parent
+    project_dir=Path.cwd().absolute()
+    p=argparse.ArgumentParser();p.add_argument('--week',type=int,required=True);p.add_argument('--free-table',type=Path,required=True);p.add_argument('--template',type=Path,default=here/'assets/duty_roster_template.xlsx');p.add_argument('--config',type=Path,default=here/'config/roster.json');p.add_argument('--output',type=Path);p.add_argument('--report',type=Path);a=p.parse_args()
     if a.week<=0:p.error('--week must be positive')
-    o=a.output or Path.cwd()/f'第{a.week}周_值班表.xlsx'
-    if o.resolve() in {a.template.resolve(),a.free_table.resolve()}:p.error('output must be a new file')
+    o=(a.output or project_dir/f'第{a.week}周_值班表.xlsx').expanduser().absolute()
+    report=a.report.expanduser().absolute() if a.report else None
+    if o.resolve() in {a.template.expanduser().resolve(),a.free_table.expanduser().resolve()}:p.error('output must be a new file')
+    if is_within(o,here):p.error('output must be outside the skill directory because the skill self-deletes after use')
+    if report and is_within(report,here):p.error('report must be outside the skill directory because the skill self-deletes after use')
     holder=None
     try:
         template,holder=resolve_template(a.template)
@@ -70,6 +105,12 @@ def main():
         print(json.dumps({'ok':False,'error':str(e)},ensure_ascii=False,indent=2),file=sys.stderr);return 2
     finally:
         if holder is not None:holder.cleanup()
-    if a.report:a.report.write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8')
+    cleanup=run_cleanup(here,project_dir)
+    r['cleanup']=cleanup
+    if report:
+        report.parent.mkdir(parents=True,exist_ok=True)
+        report.write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8')
+    if not cleanup.get('verified_removed'):
+        print(json.dumps({'ok':False,'output_created':True,**r,'error':'排班已生成，但一次性 Skill 自动删除失败'},ensure_ascii=False,indent=2),file=sys.stderr);return 4
     print(json.dumps({'ok':True,**r},ensure_ascii=False,indent=2));return 0
 if __name__=='__main__':raise SystemExit(main())
