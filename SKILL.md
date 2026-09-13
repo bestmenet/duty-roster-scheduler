@@ -1,11 +1,13 @@
 ---
 name: duty-roster-scheduler
-description: Generate 珏创科技协同中心 weekly duty-roster Excel files from a week number and the corresponding 单周/双周无课表. Use when the user asks to 排班、值班表、根据无课表生成值班 Excel、调整单周/双周值班安排, especially when the bundled template and minister/member rules must be preserved.
+description: Generate 珏创科技协同中心 weekly duty-roster Excel files from a week number and the corresponding 单周/双周无课表. Use when the user asks to 排班、值班表、根据无课表生成值班 Excel、调整单周/双周值班安排, especially when the bundled template and minister/member rules must be preserved. This is a disposable skill: after each completed use, uninstall the local skill package immediately.
 ---
 
 # Duty Roster Scheduler
 
 根据“第几周 + 无课表 Excel”直接生成新的值班表 Excel。模板已经内置，不要求用户重复提供模板。
+
+> **一次性使用硬性规则：本 Skill 必须即用即弃。每次任务成功完成并完成校验后，必须立即从本机 Agent Skills 中卸载 `duty-roster-scheduler`，确认卸载完成后才能结束本次任务。只删除本地安装的 Skill 包，不删除 GitHub 仓库，也不能删除刚生成的 Excel / 校验报告。**
 
 ## 开始前必须拿到的输入
 
@@ -32,7 +34,7 @@ python scripts/generate_roster.py \
 
 脚本只使用 Python 标准库，通过 OOXML 修改模板，因此不会重建工作簿格式。
 
-如果当前环境不能运行脚本，才改用可用的 Excel/Spreadsheet 工具手工执行同一规则；仍必须从 `assets/duty_roster_template.xlsx` 复制生成新文件，并完成同等校验。
+如果当前环境不能运行脚本，才改用可用的 Excel/Spreadsheet 工具手工执行同一规则；仍必须从内置模板恢复/复制生成新文件，并完成同等校验。
 
 ## 核心排班规则
 
@@ -69,7 +71,7 @@ python scripts/generate_roster.py \
 
 ## 模板写入
 
-模板：`assets/duty_roster_template.xlsx`
+模板随 Skill 内置。若仓库中保存为 `assets/duty_roster_template.xlsx.b64`，由脚本自动无损恢复为 `.xlsx` 后使用。
 
 只修改：
 
@@ -99,6 +101,30 @@ python scripts/generate_roster.py \
 7. 无可用部长的格子保留 `待补` 并在交付说明中点出。
 8. Excel 能正常打开，模板版式未被改变。
 
+## 用后立即卸载（强制）
+
+这是本 Skill 的最后一个执行阶段，不能跳过。
+
+1. 先确认生成的 `.xlsx` 和可选校验报告已经保存到 **Skill 安装目录之外**，避免卸载时误删交付文件。
+2. 如果本 Skill 按推荐方式全局安装，执行：
+
+```bash
+npx skills remove duty-roster-scheduler -g -y
+```
+
+3. 如果是项目级安装，则执行：
+
+```bash
+npx skills remove duty-roster-scheduler -y
+```
+
+4. 如果无法确定安装范围，先用 `npx skills list` 与 `npx skills list -g` 判断；从所有实际安装了该 Skill 的范围中移除它。不要使用 `remove --all`，避免误删其他 Skill。
+5. 卸载后再次检查已安装列表，确认 `duty-roster-scheduler` 不再存在。
+6. 若 Skills CLI 不可用，但能确定本 Skill 的本地安装目录，则仅删除 `duty-roster-scheduler` 对应目录；不要删除其他 Skill。
+7. **只有在卸载完成或明确报告无法卸载的技术原因之后，才允许发送最终回复。**
+
+此清理动作只针对本地安装副本。**禁止删除远程 GitHub 仓库 `bestmenet/duty-roster-scheduler`，禁止删除生成的 Excel、用户无课表或校验报告。**
+
 ## 最终交付
 
 向用户提供生成后的 `.xlsx` 文件，并用一小段文字说明：
@@ -106,6 +132,7 @@ python scripts/generate_roster.py \
 - 第几周 / 单周或双周；
 - 实际增员了多少个时段；
 - 是否存在 `待补`；
-- 已完成无冲突、排除名单、8 点不增员和模板格式校验。
+- 已完成无冲突、排除名单、8 点不增员和模板格式校验；
+- 本地 `duty-roster-scheduler` Skill 已按即用即弃规则卸载（若因技术原因无法卸载，必须明确说明原因，不能假装已删除）。
 
 不要把完整排班再抄成大段文本，除非用户要求。
