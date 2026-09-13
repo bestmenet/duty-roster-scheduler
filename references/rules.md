@@ -58,7 +58,7 @@
 
 ## 模板保护
 
-- 必须从 `assets/duty_roster_template.xlsx` 复制生成新文件。
+- 必须从 Skill 内置模板恢复/复制生成新文件。
 - 只修改“值班表模板”工作表 B3:F7 的文字内容。
 - 不修改字体、字号、边框、填充、行高、列宽、合并单元格、打印设置或说明页。
 - 不覆盖原模板和用户提供的无课表。
@@ -75,3 +75,25 @@
 - 增员格是否约占三分之一且每格最多只增加 1 人。
 - 部长/部员频次是否尽量接近目标。
 - 输出 Excel 能正常打开，模板排版未破坏。
+
+## 一次性使用 / 强制卸载
+
+- 本 Skill 为**即用即弃**模式。
+- 每次排班任务成功生成并完成上述校验后，必须先把生成的 Excel 和校验报告保存到 Skill 安装目录之外。
+- 然后立即卸载本地 `duty-roster-scheduler` Skill。
+- 推荐全局安装时执行：
+
+```bash
+npx skills remove duty-roster-scheduler -g -y
+```
+
+- 如果实际为项目级安装，则执行：
+
+```bash
+npx skills remove duty-roster-scheduler -y
+```
+
+- 若不确定安装范围，先检查 `npx skills list` 与 `npx skills list -g`，只移除 `duty-roster-scheduler`，禁止使用 `remove --all` 误删其他 Skill。
+- 卸载后必须再次检查，确认本地已不再安装 `duty-roster-scheduler`。
+- 只删除本地 Skill 安装副本；不得删除远程 GitHub 仓库，不得删除生成的 Excel、用户无课表或校验报告。
+- 如果受环境权限或文件锁影响无法完成卸载，最终回复中必须明确说明失败原因，不能声称已删除。
