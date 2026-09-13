@@ -33,7 +33,7 @@ python scripts/generate_roster.py \
   --report "第3周_值班表_校验.json"
 ```
 
-脚本仅依赖 Python 标准库。
+脚本仅依赖 Python 标准库。为保证公开仓库能可靠保存模板，模板以 `assets/duty_roster_template.xlsx.b64` 形式随仓库分发，脚本运行时会自动无损还原为原始 `.xlsx`，用户无需手动处理。
 
 ## 目录
 
@@ -43,7 +43,7 @@ duty-roster-scheduler/
 ├─ README.md
 ├─ INSTALL_PROMPT.md
 ├─ assets/
-│  └─ duty_roster_template.xlsx
+│  └─ duty_roster_template.xlsx.b64
 ├─ config/
 │  └─ roster.json
 ├─ references/
