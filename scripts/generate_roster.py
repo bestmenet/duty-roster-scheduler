@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 from collections import defaultdict
-import argparse,base64,binascii,json,subprocess,sys,tempfile,zipfile
+import argparse,base64,binascii,json,os,subprocess,sys,tempfile,zipfile
 import xml.etree.ElementTree as ET
 from xlsxio import read_values,patch,XlsxError
 from scheduler import availability,assign,extras,DAYS,TC
@@ -68,6 +68,12 @@ def is_within(path, root):
 
 def run_cleanup(skill_root, project_dir):
     cleanup_script=Path(skill_root)/'scripts/cleanup_skill.py'
+    # On Windows a process whose current working directory is inside the Skill
+    # can keep that directory from being deleted. Move the parent process out
+    # before launching the self-cleaner.
+    if is_within(Path.cwd(),skill_root):
+        try:os.chdir(tempfile.gettempdir())
+        except OSError as exc:return {'verified_removed':False,'error':f'无法离开 Skill 目录以执行自清理: {exc}'}
     if not cleanup_script.exists():
         return {'verified_removed':False,'error':'缺少自动清理脚本 cleanup_skill.py'}
     cmd=[sys.executable,str(cleanup_script),'--skill-name','duty-roster-scheduler','--skill-root',str(skill_root)]
