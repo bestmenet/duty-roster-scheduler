@@ -3,7 +3,7 @@ from pathlib import Path
 from collections import defaultdict
 import argparse,base64,binascii,json,os,subprocess,sys,tempfile,zipfile
 import xml.etree.ElementTree as ET
-from xlsxio import read_values,patch,XlsxError
+from xlsxio import read_values,patch,validate_multiline_cells,XlsxError
 from scheduler import availability,assign,extras,DAYS,TC
 
 class RosterError(RuntimeError):pass
@@ -37,6 +37,8 @@ def generate(week,free,template,config_path,output):
     patch(template,output,cells)
     out,_=read_values(output,'值班表模板')
     if any(not out.get(a) for a in cells):raise RosterError('输出文件写入失败')
+    multiline_issues=validate_multiline_cells(output,cells,'值班表模板')
+    if multiline_issues:raise RosterError('单元格换行/自动换行校验失败: '+', '.join(multiline_issues[:12]))
     for data in (ma,ba,extra):
         for i,p in data.items():
             if p not in av[i]:raise RosterError(f'内部校验发现课表冲突: {p} {slots[i]}')
@@ -55,7 +57,7 @@ def generate(week,free,template,config_path,output):
         for (p,d),xs in seen.items():
             if len(xs)>1:rep.append({'role':role,'name':p,'day':DAYS[d],'slots':xs})
     lab=lambda i:f"{slots[i]['day']} {slots[i]['name']}节"
-    return {'week':week,'week_type':'单周' if week%2 else '双周','free_table_sheet':sh,'free_table_title':title,'output':str(output),'extra_target':round(len(slots)*float(st.get('extra_slot_fraction',1/3))),'extra_actual':len(extra),'unfilled_minister':[lab(i) for i in mu],'unfilled_member':[lab(i) for i in bu],'minister_counts':dict(sorted(mc.items())),'member_counts':dict(sorted(bc.items())),'same_day_repeats':rep,'excluded_absent':True,'eight_am_extra_count':0,'cells_written':cells}
+    return {'week':week,'week_type':'单周' if week%2 else '双周','free_table_sheet':sh,'free_table_title':title,'output':str(output),'extra_target':round(len(slots)*float(st.get('extra_slot_fraction',1/3))),'extra_actual':len(extra),'unfilled_minister':[lab(i) for i in mu],'unfilled_member':[lab(i) for i in bu],'minister_counts':dict(sorted(mc.items())),'member_counts':dict(sorted(bc.items())),'same_day_repeats':rep,'excluded_absent':True,'eight_am_extra_count':0,'multiline_verified':True,'cells_written':cells}
 
 
 def is_within(path, root):
