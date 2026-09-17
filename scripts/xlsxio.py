@@ -1,4 +1,5 @@
 from pathlib import Path, PurePosixPath
+from copy import deepcopy
 import re, zipfile
 import xml.etree.ElementTree as ET
 
@@ -44,10 +45,27 @@ def _col(a):
     for ch in m.group(1): n=n*26+ord(ch)-64
     return n
 
+def _wrap_style(styles_root, style_id, cache):
+    if styles_root is None:return style_id
+    xfs=styles_root.find(f'{{{M}}}cellXfs')
+    if xfs is None or not list(xfs):return style_id
+    if style_id in cache:return cache[style_id]
+    if style_id<0 or style_id>=len(xfs):style_id=0
+    xf=deepcopy(xfs[style_id])
+    xf.attrib['applyAlignment']='1'
+    alignment=xf.find(f'{{{M}}}alignment')
+    if alignment is None:alignment=ET.SubElement(xf,f'{{{M}}}alignment')
+    alignment.attrib['wrapText']='1'
+    xfs.append(xf); xfs.attrib['count']=str(len(xfs))
+    new_id=len(xfs)-1; cache[style_id]=new_id
+    return new_id
+
 def patch(template,output,cells,sheet='值班表模板'):
     output=Path(output); output.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(template) as zin:
         sp,_=_sheet(zin,sheet); root=ET.fromstring(zin.read(sp)); sd=root.find(f'{{{M}}}sheetData')
+        styles_path='xl/styles.xml'; styles_root=ET.fromstring(zin.read(styles_path)) if styles_path in zin.namelist() else None
+        wrap_cache={}
         rows={int(r.attrib['r']):r for r in sd.findall(f'{{{M}}}row') if r.attrib.get('r')}
         def cell(addr):
             m=re.match(r'([A-Z]+)(\d+)$',addr); rn=int(m.group(2)); row=rows.get(rn)
@@ -61,9 +79,38 @@ def patch(template,output,cells,sheet='值班表模板'):
             row.insert(pos,c); return c
         for a,text in cells.items():
             c=cell(a)
+            old_style=int(c.attrib.get('s','0') or 0)
+            c.attrib['s']=str(_wrap_style(styles_root,old_style,wrap_cache))
             for ch in list(c): c.remove(ch)
             c.attrib['t']='inlineStr'; isel=ET.SubElement(c,f'{{{M}}}is'); t=ET.SubElement(isel,f'{{{M}}}t')
             t.attrib[f'{{{X}}}space']='preserve'; t.text=text
-        xml=ET.tostring(root,encoding='utf-8',xml_declaration=True)
+        sheet_xml=ET.tostring(root,encoding='utf-8',xml_declaration=True)
+        styles_xml=ET.tostring(styles_root,encoding='utf-8',xml_declaration=True) if styles_root is not None else None
         with zipfile.ZipFile(output,'w') as zout:
-            for it in zin.infolist(): zout.writestr(it,xml if it.filename==sp else zin.read(it.filename))
+            for it in zin.infolist():
+                if it.filename==sp:data=sheet_xml
+                elif it.filename==styles_path and styles_xml is not None:data=styles_xml
+                else:data=zin.read(it.filename)
+                zout.writestr(it,data)
+
+def validate_multiline_cells(path,expected,sheet='值班表模板'):
+    issues=[]
+    with zipfile.ZipFile(path) as z:
+        sp,_=_sheet(z,sheet); root=ET.fromstring(z.read(sp))
+        cells={c.attrib.get('r'):c for c in root.iter(f'{{{M}}}c') if c.attrib.get('r')}
+        styles=ET.fromstring(z.read('xl/styles.xml')) if 'xl/styles.xml' in z.namelist() else None
+        xfs=styles.find(f'{{{M}}}cellXfs') if styles is not None else None
+        for addr,want in expected.items():
+            c=cells.get(addr)
+            if c is None:
+                issues.append(f'{addr}:missing');continue
+            got=''.join(t.text or '' for t in c.iter(f'{{{M}}}t'))
+            if got!=want:issues.append(f'{addr}:value-mismatch')
+            if '\n' not in got:issues.append(f'{addr}:missing-line-break')
+            sid=int(c.attrib.get('s','0') or 0)
+            wrapped=False
+            if xfs is not None and 0<=sid<len(xfs):
+                alignment=xfs[sid].find(f'{{{M}}}alignment')
+                wrapped=alignment is not None and alignment.attrib.get('wrapText') in {'1','true','True'}
+            if not wrapped:issues.append(f'{addr}:wrapText-off')
+    return issues
