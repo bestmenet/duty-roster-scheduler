@@ -1,5 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
-第*周_值班表*.xlsx
-第*周_值班表*_校验.json
+*_值班表_验证.json
+*_roster_validation.json
